@@ -111,41 +111,6 @@ void EVENT_USB_Device_ConfigurationChanged(void) {
 
 // Process control requests sent to the device from the USB host.
 void EVENT_USB_Device_ControlRequest(void) {
-	// We can handle two control requests: a GetReport and a SetReport.
-	switch (USB_ControlRequest.bRequest)
-	{
-		// GetReport is a request for data from the device.
-		case HID_REQ_GetReport:
-			if (USB_ControlRequest.bmRequestType == (REQDIR_DEVICETOHOST | REQTYPE_CLASS | REQREC_INTERFACE))
-			{
-				// We'll create an empty report.
-				USB_JoystickReport_Input_t JoystickInputData;
-				// We'll then populate this report with what we want to send to the host.
-				GetNextReport(&JoystickInputData);
-				// Since this is a control endpoint, we need to clear up the SETUP packet on this endpoint.
-				Endpoint_ClearSETUP();
-				// Once populated, we can output this data to the host. We do this by first writing the data to the control stream.
-				Endpoint_Write_Control_Stream_LE(&JoystickInputData, sizeof(JoystickInputData));
-				// We then acknowledge an OUT packet on this endpoint.
-				Endpoint_ClearOUT();
-			}
-
-			break;
-		case HID_REQ_SetReport:
-			if (USB_ControlRequest.bmRequestType == (REQDIR_HOSTTODEVICE | REQTYPE_CLASS | REQREC_INTERFACE))
-			{
-				// We'll create a place to store our data received from the host.
-				USB_JoystickReport_Output_t JoystickOutputData;
-				// Since this is a control endpoint, we need to clear up the SETUP packet on this endpoint.
-				Endpoint_ClearSETUP();
-				// With our report available, we read data from the control stream.
-				Endpoint_Read_Control_Stream_LE(&JoystickOutputData, sizeof(JoystickOutputData));
-				// We then send an IN packet on this endpoint.
-				Endpoint_ClearIN();
-			}
-
-			break;
-	}
 }
 
 // Process and deliver data from IN and OUT endpoints.
@@ -193,6 +158,7 @@ void HID_Task(void) {
 }
 
 int wait_time = 0;
+int hold_time = 0;
 // Prepare the next report for the host.
 void GetNextReport(USB_JoystickReport_Input_t* const ReportData) {
 	memset(ReportData, 0, sizeof(USB_JoystickReport_Input_t));
@@ -203,10 +169,16 @@ void GetNextReport(USB_JoystickReport_Input_t* const ReportData) {
 	ReportData->HAT = 0x08;
 
 	// repeatedly press A in a time interval
-	if (wait_time < 100) {
+	if (wait_time < 70) {
 		wait_time++;
 		return;
 	}
-	ReportData->Button |= SWITCH_A;
+	// hold the button for a while
+	if (hold_time < 5) {
+		ReportData->Button |= SWITCH_A;
+		hold_time++;
+		return;
+	}
+	hold_time = 0;
 	wait_time = 0;
 }
